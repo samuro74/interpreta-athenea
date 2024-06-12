@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interpretador de laboratorios</title>
+	
+	<link rel="icon" type="image/jpg" href="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcThG5IDtNEfrhpqqGt2aPUDVdZ8FRoy58goBw&usqp=CAU"/>
+	
+	
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        #form-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            max-width: 800px;
+            width: 100%;
+        }
+
+        #form-container {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: row;
+            width: 100%;
+        }
+
+        #input-container,
+        #results-container {
+            flex: 1;
+            padding-right: 20px;
+        }
+
+        textarea {
+            width: 100%;
+            min-height: 20em; /* Al menos 20 líneas de alto */
+            padding: 10px;
+            box-sizing: border-box;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            resize: both; /* Permite redimensionar */
+        }
+
+        button {
+            padding: 15px 30px;
+            background-color: #007bff;
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+
+        #results-title {
+            font-size: 18px;
+            margin-bottom: 10px;
+        }
+
+        .group-title {
+            font-size: 16px;
+            font-weight: bold;
+            margin-top: 20px;
+        }
+
+        .group-results {
+            margin-bottom: 20px;
+        }
+
+        #cleaned-text {
+            width: 100%;
+            min-height: 20em;
+            padding: 10px;
+            box-sizing: border-box;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            background-color: #f9f9f9;
+            margin-top: 10px;
+            margin-bottom: 20px;
+        }
+
+        #copy-button {
+            margin-top: 10px;
+        }
+
+        h2 {
+            text-align: center;
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+    <div id="form-wrapper">
+        <h2>Interpretador de laboratorios para software Athenea</h2>
+        <div id="form-container">
+            <div id="input-container">
+                <form id="text-form">
+                    <label for="input-text">Ingrese el texto:</label>
+                    <textarea id="input-text" name="input-text" rows="20" required></textarea>
+                    <button type="submit" onclick="interpretarResultados()">Interpretar resultados</button>
+                    <button type="button" onclick="borrarResultados()">Borrar resultados</button>
+                </form>
+            </div>
+            <div id="results-container">
+                <h2 id="results-title">Resultados interpretados</h2>
+                <textarea id="cleaned-text" readonly></textarea>
+                <button id="copy-button" type="button" onclick="copiarResultados()">Copiar resultados</button>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
+
+
+    <script>
+        // Lista de palabras de referencia
+        var palabrasReferencia = [
+            'anti', 'aspecto', 'bacteria', 'beta', 'bili', 'cetona', 'cilindro', 'cito', 'colora',
+            'complement', 'corpuscular', 'covid', 'crecimiento', 'cultivo', 'densidad', 'dimero',
+            'distribu', 'en suero', 'epitel', 'extendido', 'fosfatasa', 'glucosa', 'gram', 'ssp',
+            'hemato', 'hematíes', 'hematocrito', 'hemoglobina', 'hepat', 'hiv', 'icina', 'be-ecf',
+            'igg', 'igm', 'inr', 'lactato', 'ldh', 'liquido', 'medio', 'microor', 'miembro', 'muestra',
+			'nitratos', 'o²', 'o³', 'ocitos', 'ofilos', 'plaqueta', 'procalci', 'prote', 'prueba', 'ph',
+			'recuento', 'sedimento', 'serie', 't4', 'tiempo de', 'transferasa', 'troponina',
+			'uroanalisis', 'vsg', 'sensible', 'resistente', 'intermedio', 'blee', 'escheri', 'klebs',
+			'lavado', 'resultado', 'mona', 'myco', 'línea', 'pendiente', 'derech', 'izquierd'
+        ];
+
+        // Lista de palabras redundantes a eliminar
+        var palabrasRedundantes = [
+            'nitrógneo ureíco en suero',
+            'hemograma',
+            'hematologia',
+			'inmunohematologia',
+			'Examen Resultado',
+			'infecciones virales, infección bacteriana localizada.'
+        ];
+
+        function interpretarResultados() {
+            event.preventDefault(); // Evita que el formulario se envíe de forma predeterminada
+            
+            // Obtiene el texto ingresado por el usuario
+            var inputText = document.getElementById('input-text').value;
+
+            // Proceso previo: buscar y reemplazar "- VSG] MANUAL" por "VSG:" seguido de la línea siguiente
+            inputText = inputText.replace(/- VSG\] MANUAL\n(.*)/g, 'VSG: $1');
+
+            // Proceso previo: convertir en índices los 2 y 3
+            inputText = inputText.replace(/O2/g, 'O²').replace(/O3/g, 'O³');
+
+            // Divide el texto en dos partes: antes y después de la primera aparición de "EDAD"
+            var partes = dividirTexto(inputText);
+
+            // Conserva la última línea que contiene el nombre del paciente
+            var nombrePaciente = conservarNombrePaciente(partes[0]);
+
+            // Construye el texto de la primera parte con la nueva cabecera
+            partes[0] = 'REPORTE DE LABORATORIOS:\n\nPACIENTE: ' + nombrePaciente;
+
+            // Elimina líneas redundantes del segundo texto
+            partes[1] = eliminarRedundancias(partes[1], palabrasRedundantes);
+
+            // Elimina líneas del segundo texto que no contienen palabras de referencia
+            var textoDepurado = depurarTexto(partes[1], palabrasReferencia);
+
+            // Agrupa el texto depurado en diferentes categorías
+            var grupos = agruparTexto(textoDepurado);
+
+            // Analiza los resultados y genera el texto de análisis
+            var analisis = analizarResultados(grupos);
+
+            // Muestra los resultados y el análisis en la caja de texto
+            mostrarResultados(partes[0], grupos, analisis);
+        }
+
+        // Función para dividir el texto en dos partes: antes y después de la primera aparición de "EDAD"
+        function dividirTexto(texto) {
+            var indiceEdad = texto.toLowerCase().indexOf('edad');
+
+            // Si se encuentra "EDAD", busca dos líneas después de su aparición
+            if (indiceEdad !== -1) {
+                var indiceNuevaLinea = texto.indexOf('\n', indiceEdad);
+                if (indiceNuevaLinea !== -1) {
+                    indiceNuevaLinea = texto.indexOf('\n', indiceNuevaLinea + 1);
+                    if (indiceNuevaLinea !== -1) {
+                        indiceEdad = indiceNuevaLinea;
+                    }
+                }
+            }
+
+            // Divide el texto en dos partes
+            var parte1 = texto.substring(0, indiceEdad);
+            var parte2 = texto.substring(indiceEdad);
+
+            return [parte1, parte2];
+        }
+
+        // Función para conservar el nombre del paciente de la última línea
+        function conservarNombrePaciente(texto) {
+            var lineas = texto.split('\n');
+            var ultimaLinea = lineas[lineas.length - 1];
+            return ultimaLinea.trim(); // Elimina espacios en blanco al principio y al final
+        }
+
+        // Función para eliminar líneas redundantes del texto
+        function eliminarRedundancias(texto, palabrasRedundantes) {
+            var lineas = texto.split('\n');
+            lineas = lineas.filter(function(linea) {
+                return !palabrasRedundantes.some(function(palabra) {
+                    return linea.trim().toLowerCase() === palabra.toLowerCase();
+                });
+            });
+            return lineas.join('\n');
+        }
+
+        // Función para depurar el texto conservando solo las líneas que contienen palabras de referencia
+        function depurarTexto(texto, palabrasReferencia) {
+            var lineas = texto.split('\n');
+            var textoDepurado = '';
+            var lineasProcesadas = {}; // Almacena las líneas que ya han sido procesadas
+            lineas.forEach(function(linea) {
+                palabrasReferencia.forEach(function(palabra) {
+                    if (!lineasProcesadas[linea] && linea.toLowerCase().includes(palabra)) {
+                        textoDepurado += linea + '\n';
+                        lineasProcesadas[linea] = true;
+                    }
+                });
+            });
+            return textoDepurado.trim(); // Elimina espacios en blanco al principio y al final
+        }
+
+        // Función para agrupar el texto depurado en diferentes categorías
+        function agruparTexto(texto) {
+            var grupos = {
+                'Hemograma': [],
+                'Electrolitos': [],
+                'Función renal': [],
+                'Función hepática': [],
+                'Gases arteriales': [],
+                'Tiempos de coagulación': [],
+                'Marcadores inflamatorios': [],
+                'Otros': []
+            };
+
+            var lineas = texto.split('\n');
+            lineas.forEach(function(linea) {
+                if (linea.toLowerCase().includes('hemoglobina') ||
+                    linea.toLowerCase().includes('hematíes') ||
+                    linea.toLowerCase().includes('hematocrito') ||
+                    linea.toLowerCase().includes('cuento de glob') ||
+                    linea.toLowerCase().includes('corpuscular') ||
+                    linea.toLowerCase().includes('plaqueta') ||
+                    linea.toLowerCase().includes('eritrocitaria') ||
+                    linea.toLowerCase().includes('citos recue') ||
+                    linea.toLowerCase().includes('filos recue') ||
+                    linea.toLowerCase().includes('citos porcen') ||
+                    linea.toLowerCase().includes('filos porcen') ||
+                    linea.toLowerCase().includes('leucocitos')) {
+                    grupos['Hemograma'].push(linea);
+                } else if (linea.toLowerCase().includes('sodio') ||
+                    linea.toLowerCase().includes('potasio') ||
+                    linea.toLowerCase().includes('fósforo') ||
+                    linea.toLowerCase().includes('cloro') ||
+                    linea.toLowerCase().includes('magnesio') ||
+                    linea.toLowerCase().includes('calcio en suero')) {
+                    grupos['Electrolitos'].push(linea);
+                } else if (linea.toLowerCase().includes('creatinina en suero') ||
+                    linea.toLowerCase().includes('nitrógneo ureíco en suero') ||
+                    linea.toLowerCase().includes('úrea en suero')) {
+                    grupos['Función renal'].push(linea);
+                } else if (linea.toLowerCase().includes('ph') ||
+                    linea.toLowerCase().includes('pco²') ||
+                    linea.toLowerCase().includes('po²') ||
+                    linea.toLowerCase().includes('hco³') ||
+                    linea.toLowerCase().includes('so²') ||
+                    linea.toLowerCase().includes('be-ecf') ||
+                    linea.toLowerCase().includes('lactato') ||
+                    linea.toLowerCase().includes('fio²')) {
+                    grupos['Gases arteriales'].push(linea);
+                } else if (linea.toLowerCase().includes('amino transf') ||
+                    linea.toLowerCase().includes('bilirrubina') ||
+                    linea.toLowerCase().includes('fosfatasa alca') ||
+                    linea.toLowerCase().includes('amilasa')) {
+                    grupos['Función hepática'].push(linea);
+                } else if (linea.toLowerCase().includes('tiempo de') ||
+                    linea.toLowerCase().includes('dice norma')) {
+                    grupos['Tiempos de coagulación'].push(linea);
+                } else if (linea.toLowerCase().includes('proteína c reactiva') ||
+                    linea.toLowerCase().includes('vsg:')) {
+                    grupos['Marcadores inflamatorios'].push(linea);
+                } else {
+                    grupos['Otros'].push(linea);
+                }
+            });
+
+            return grupos;
+        }
+
+        // Función para analizar los resultados y generar el texto de análisis
+        function analizarResultados(grupos) {
+            var analisis = '';
+            // Análisis del hemograma
+            var hemograma = analizarHemograma(grupos['Hemograma']);
+            if (hemograma !== 'HEMOGRAMA CON ') {
+                analisis += hemograma;
+            }
+            // Análisis de los electrolitos
+            var funcionElectrolitos = analizarElectrolitos(grupos['Electrolitos']);
+            if (funcionElectrolitos !== '') {
+                analisis += funcionElectrolitos;
+            }
+            // Análisis de la función renal
+            var funcionRenal = analizarFuncionRenal(grupos['Función renal']);
+            if (funcionRenal !== '') {
+                analisis += funcionRenal;
+            }
+			// Análisis del perfil hepático
+			var perfilHepatico = analizarPerfilHepatico(grupos['Función hepática']);
+			if (perfilHepatico !== '') {
+				analisis += perfilHepatico;
+			}
+			// Análisis del perfil de coagulación
+			var perfilCoagulacion = analizarPerfilCoagulacion(grupos['Tiempos de coagulación']);
+			if (perfilCoagulacion !== '') {
+				analisis += perfilCoagulacion;
+			}
+			// Análisis de los gases arteriales
+			var gasesArteriales = analizarGasesArteriales(grupos['Gases arteriales']);
+			if (gasesArteriales !== '') {
+				analisis += gasesArteriales;
+			}
+			// Análisis de los marcadores inflamatorios
+			var MarcadoresInflamatorios = analizarMarcadoresInflamatorios(grupos['Marcadores inflamatorios']);
+			if (MarcadoresInflamatorios !== '') {
+				analisis += MarcadoresInflamatorios;
+			}
+			// Análisis de otros laboratorios
+			var OtrosLaboratorios = analizarOtrosLaboratorios(grupos['Otros']);
+			if (OtrosLaboratorios !== '') {
+				analisis += OtrosLaboratorios;
+			}
+            // Eliminar la última coma y espacio si hay análisis
+            if (analisis.endsWith(', ')) {
+                analisis = analisis.slice(0, -2);
+            }
+
+            return analisis;
+        }
+
+        // Función para analizar el hemograma
+        function analizarHemograma(resultados) {
+            var analisis = 'HEMOGRAMA CON ';
+			var plaquetaAgregada = false; // Variable para controlar si ya se ha agregado "PLAQUETAS"	
+
+            resultados.forEach(function(resultado) {
+                var valor = obtenerValor(resultado);
+                if (resultado.toLowerCase().includes('recuento de leucocitos')) {
+                    if (parseFloat(valor) < 4) {
+                        analisis += 'LEUCOPENIA, ';
+                    } else if (parseFloat(valor) > 10) {
+                        analisis += 'LEUCOCITOSIS, ';
+                    }
+                } else if (resultado.toLowerCase().includes('plaquetas')) {
+                    if (parseFloat(valor) < 150) {
+					if (!plaquetaAgregada) {
+                        analisis += 'TROMBOCITOPENIA, ';
+						plaquetaAgregada = true; // Marcamos que se ha agregado "PLAQUETAS"
+						}
+                    } else if (parseFloat(valor) > 400) {
+					if (!plaquetaAgregada) {
+                        analisis += 'TROMBOCITOSIS, ';
+						plaquetaAgregada = true; // Marcamos que se ha agregado "PLAQUETAS"
+						}
+                    }
+                } else if (resultado.toLowerCase().includes('neutrofilos recuento absoluto')) {
+                    if (parseFloat(valor) < 2) {
+                        analisis += 'NEUTROPENIA, ';
+                    } else if (parseFloat(valor) > 7.5) {
+                        analisis += 'NEUTROFILIA, ';
+                    }
+                } else if (resultado.toLowerCase().includes('linfocitos recuento absoluto')) {
+                    if (parseFloat(valor) < 1) {
+                        analisis += 'LINFOPENIA, ';
+                    } else if (parseFloat(valor) > 4) {
+                        analisis += 'LINFOCITOSIS, ';
+                    }
+                } else if (resultado.toLowerCase().includes('hemoglobina')) {
+                    if (parseFloat(valor) < 7) {
+                        analisis += 'ANEMIA EN RANGO TRANSFUSIONAL, ';
+                    } else if (parseFloat(valor) >= 7 && parseFloat(valor) < 8) {
+                        analisis += 'ANEMIA EN RANGO TRANSFUSIONAL RELATIVO, ';
+                    } else if (parseFloat(valor) >= 8 && parseFloat(valor) < 12) {
+                        analisis += 'ANEMIA EN RANGO NO TRANSFUSIONAL, ';
+                    }
+                }
+            });
+            return analisis;
+        }
+
+        // Función para analizar electrolitos
+        function analizarElectrolitos(resultados) {
+            var analisis = '';
+            resultados.forEach(function(resultado) {
+                var valor = obtenerValor(resultado);
+                if (resultado.toLowerCase().includes('sodio')) {
+                    if (parseFloat(valor) < 136) {
+                        analisis += 'HIPONATREMIA, ';
+                    } else if (parseFloat(valor) > 145) {
+                        analisis += 'HIPERNATREMIA, ';
+                    }
+                } else if (resultado.toLowerCase().includes('potasio')) {
+                    if (parseFloat(valor) < 3.4) {
+                        analisis += 'HIPOKALEMIA, ';
+                    } else if (parseFloat(valor) > 5) {
+                        analisis += 'HIPERKALEMIA, ';
+                    }
+                } else if (resultado.toLowerCase().includes('cloro')) {
+                    if (parseFloat(valor) < 98) {
+                        analisis += 'HIPOCLOREMIA, ';
+                    } else if (parseFloat(valor) > 107) {
+                        analisis += 'HIPERCLOREMIA, ';
+                    }
+                } else if (resultado.toLowerCase().includes('calcio')) {
+                    if (parseFloat(valor) < 8) {
+                        analisis += 'HIPOCALCEMIA, ';
+                    } else if (parseFloat(valor) > 10) {
+                        analisis += 'HIPERCALCEMIA, ';
+                    }
+                } else if (resultado.toLowerCase().includes('magnesio')) {
+                    if (parseFloat(valor) < 1.5) {
+                        analisis += 'HIPOMAGNESEMIA, ';
+                    } else if (parseFloat(valor) > 2.4) {
+                        analisis += 'HIPERMAGNESEMIA, ';
+                    }
+                }
+            });
+            return analisis;
+        }
+
+		// Función para analizar la función renal
+		function analizarFuncionRenal(resultados) {
+			var analisis = '';
+			var hiperazoemiaAgregada = false; // Variable para controlar si ya se ha agregado "HIPERAZOEMIA"
+				resultados.forEach(function(resultado) {
+			var valor = obtenerValor(resultado);
+			if (resultado.toLowerCase().includes('creatinina en suero') && parseFloat(valor) > 1.3) {
+				if (!hiperazoemiaAgregada) {
+					analisis += 'HIPERAZOEMIA, ';
+					hiperazoemiaAgregada = true; // Marcamos que se ha agregado "HIPERAZOEMIA"
+					}
+				}
+			if (resultado.toLowerCase().includes('nitrógneo ureíco en suero') && parseFloat(valor) > 20) {
+				if (!hiperazoemiaAgregada) {
+					analisis += 'HIPERAZOEMIA, ';
+					hiperazoemiaAgregada = true; // Marcamos que se ha agregado "HIPERAZOEMIA"
+					}
+				}	
+			});
+			return analisis;
+		}
+
+		// Función para analizar el perfil hepático
+		function analizarPerfilHepatico(resultados) {
+			var analisis = '';
+			var ast = 0;
+			var alt = 0;
+			var bilirrubinaTotal = 0;
+			var bilirrubinaConjugada = 0;
+
+			resultados.forEach(function(resultado) {
+				var valor = parseFloat(obtenerValor(resultado));
+				
+				if (resultado.toLowerCase().includes('amilasa') && valor > 110) {
+					analisis += 'HIPERAMILASEMIA, ';
+				}
+				
+				if (resultado.toLowerCase().includes('ast') || resultado.toLowerCase().includes('got')) {
+					if (ast === 0) ast = valor;
+				}
+				
+				if (resultado.toLowerCase().includes('alt') || resultado.toLowerCase().includes('gpt')) {
+					if (alt === 0) alt = valor;
+				}
+				
+				if (resultado.toLowerCase().includes('fosfatasa alcalina') && valor > 130) {
+					analisis += 'FOSFATASA ALCALINA ELEVADA, ';
+				}
+				
+				if (resultado.toLowerCase().includes('bilirrubina total')) {
+					if (bilirrubinaTotal === 0) bilirrubinaTotal = valor;
+				}
+				
+				if (resultado.toLowerCase().includes('bilirrubina conjugada') || resultado.toLowerCase().includes('bilirrubina directa')) {
+					if (bilirrubinaConjugada === 0) bilirrubinaConjugada = valor;
+				}
+			});
+
+			if (ast > 100 || alt > 100) {
+				analisis += 'HIPERTRANSAMINASEMIA, ';
+			}
+
+			if (bilirrubinaTotal > 1.3) {
+				if (bilirrubinaConjugada > bilirrubinaTotal / 2) {
+					analisis += 'HIPERBILIRRUBINEMIA A EXPENSAS DE LA DIRECTA, ';
+				} else if (bilirrubinaConjugada <= bilirrubinaTotal / 2) {
+					analisis += 'HIPERBILIRRUBINEMIA A EXPENSAS DE LA INDIRECTA, ';
+				}
+			}
+
+			return analisis;
+		}
+		// Función para analizar perfil de coagulación
+		function analizarPerfilCoagulacion(resultados) {
+			var analisis = '';
+
+			resultados.forEach(function(resultado) {
+				var valor = parseFloat(obtenerValor(resultado));
+				
+				if (resultado.toLowerCase().includes('inr') && valor > 1.5) {
+					analisis += 'INR PROLONGADO, ';
+				}
+			});
+
+			return analisis;
+		}
+
+		// Función para analizar gases arteriales
+		function analizarGasesArteriales(resultados) {
+			var analisis = '';
+			var pH = null;
+			var paCO2 = null;
+			var paO2 = null;
+			var eb = null;
+			var lactato = null;
+
+			resultados.forEach(function(resultado) {
+				var valor = obtenerValor(resultado);
+				if (resultado.toLowerCase().includes('ph')) {
+					pH = parseFloat(valor);
+				}
+				if (resultado.toLowerCase().includes('pco²')) {
+					paCO2 = parseFloat(valor);
+				}
+				if (resultado.toLowerCase().includes('po²')) {
+					paO2 = parseFloat(valor);
+				}
+				if (resultado.toLowerCase().includes('be')) {
+					eb = parseFloat(valor);
+				}
+				if (resultado.toLowerCase().includes('lactato')) {
+					lactato = parseFloat(valor);
+				}
+			});
+			// Si paCO2 es mayor que paO2, reportar "GASES VENOSOS"
+			if (paCO2 > paO2) {
+				analisis += 'GASES VENOSOS, ';
+			} else {
+				if (pH !== null && paCO2 !== null && paO2 !== null && eb !== null) {
+					if (pH >= 7.35 && pH <= 7.45) {
+						if (paCO2 >= 32 && paCO2 <= 48) {
+							if (eb >= -2 && eb <= 2) {
+								analisis += 'GASES ARTERIALES NORMALES, ';
+							} else {
+								analisis += (eb < -2) ? 'GASES ARTERIALES CON ACIDOSIS METABÓLICA, ' : 'GASES ARTERIALES CON ALCALOSIS METABÓLICA, ';
+							}
+						} else {
+							if (paCO2 > 48) {
+								analisis += (eb >= -2 && eb <= 2) ? 'GASES ARTERIALES CON ACIDOSIS RESPIRATORIA AGUDA, ' : 'GASES ARTERIALES CON ACIDOSIS RESPIRATORIA CRÓNICA, ';
+							} else {
+								analisis += (eb >= -2 && eb <= 2) ? 'GASES ARTERIALES CON ALCALOSIS RESPIRATORIA AGUDA, ' : 'GASES ARTERIALES CON ALCALOSIS RESPIRATORIA CRÓNICA, ';
+							}
+						}
+					} else {
+						if (paCO2 >= 32 && paCO2 <= 48) {
+							analisis += (eb < -2) ? 'GASES ARTERIALES CON ACIDOSIS METABÓLICA, ' : 'GASES ARTERIALES CON ALCALOSIS METABÓLICA, ';
+						}
+					}
+				}
+			}
+
+					if (lactato > 1.4) {
+						analisis += 'HIPERLACTATEMIA, ';
+					}
+
+			return analisis;
+		}
+
+			// Función para analizar marcadores inflamatorios
+			function analizarMarcadoresInflamatorios(resultados) {
+				var analisis = '';
+				var proteinaCReactiva = null;
+				var vsg = null;
+
+				resultados.forEach(function(resultado) {
+					var valor = obtenerValor(resultado);
+					if (resultado.toLowerCase().includes('proteína c reactiva')) {
+						proteinaCReactiva = parseFloat(valor);
+					}
+					if (resultado.toLowerCase().includes('vsg:')) {
+						vsg = parseFloat(valor);
+					}
+				});
+
+			// Análisis de marcadores inflamatorios
+			if (proteinaCReactiva !== null && vsg !== null) {
+				if (proteinaCReactiva > 1 && vsg > 15) {
+					analisis += 'MARCADORES INFLAMATORIOS ELEVADOS, ';
+				} else if (proteinaCReactiva > 1) {
+					analisis += 'PROTEÍNA C REACTIVA ELEVADA, ';
+				} else if (vsg > 15) {
+					analisis += 'VSG ELEVADA, ';
+				}
+			} else if (proteinaCReactiva !== null) {
+				if (proteinaCReactiva > 1) {
+					analisis += 'PROTEÍNA C REACTIVA ELEVADA, ';
+				}
+			} else if (vsg !== null) {
+				if (vsg > 15) {
+					analisis += 'VSG ELEVADA, ';
+				}
+			}
+
+			return analisis;
+		}
+
+		// Función para analizar otros laboratorios
+		function analizarOtrosLaboratorios(resultados) {
+			var analisis = '';
+			var ldh = null;
+			var troponina = null;
+			var procalcitonina = null;
+			var glucosa = null;
+			var albumina = null;
+			var dimerod = null;
+			var cultivo = null;
+			var cultivoAgregada = false; // Variable para controlar si ya se ha agregado "RASTREO MICROBIOLÓGICO"
+			
+			resultados.forEach(function(resultado) {
+				var valor = parseFloat(obtenerValor(resultado));
+				if (resultado.toLowerCase().includes('troponina i') && valor > 11) {
+					analisis += 'TROPONINA ELEVADA, ';
+				}
+				if (resultado.toLowerCase().includes('ldh') && valor > 245) {
+					analisis += 'DESHIDROGENASA LÁCTICA ELEVADA, ';
+				}
+				if (resultado.toLowerCase().includes('procalcitonina') && valor > 2) {
+					analisis += 'PROCALCITONINA POSITIVA, ';
+				}
+				if (resultado.toLowerCase().includes('dimero d') && valor > 0.5) {
+					analisis += 'DÍMERO D ELEVADO, ';
+				}
+				if (resultado.toLowerCase().includes('albúmina') && valor < 3.5) {
+					analisis += 'HIPOALBUMINEMIA, ';
+				}
+				if (resultado.toLowerCase().includes('glucosa')) {
+					if (parseFloat(valor) < 70) {
+						analisis += 'HIPOGLICEMIA, ';
+					} else if (parseFloat(valor) > 110) {
+						analisis += 'HIPERGLICEMIA, ';
+					}
+				}
+				if (resultado.toLowerCase().includes('cultivo')) {
+					if (!cultivoAgregada) {
+					analisis += 'RASTREO MICROBIOLÓGICO CON HALLAZGOS DESCRITOS';
+					cultivoAgregada = true; // Marcamos que se ha agregado "RASTREO MICROBIOLÓGICO"
+					}
+				}
+			});
+			return analisis;
+		}
+
+		// Función para obtener el valor numérico de una línea de resultado
+		function obtenerValor(resultado) {
+			var matches = resultado.match(/[-+]?\d*\.?\d+/g);
+			return matches ? matches.find(match => !isNaN(parseFloat(match)) && resultado.indexOf(match) > resultado.indexOf(':')) : null;
+		}
+
+        // Función para mostrar los resultados y el análisis en la caja de texto
+        function mostrarResultados(primerParte, grupos, analisis) {
+            var cleanedText = primerParte + '\n\n';
+            for (var grupo in grupos) {
+                if (grupos[grupo].length > 0) {
+                    cleanedText += grupo.toUpperCase() + ':\n' + grupos[grupo].join('\n') + '\n\n';
+                }
+            }
+            if (analisis !== '') {
+                cleanedText += 'PACIENTE CON PARACLÍNICOS QUE REPORTAN ' + analisis.trim() + '. RESTO SIN ALTERACIONES SIGNIFICATIVAS.';
+            } else {
+                cleanedText += 'PACIENTE CON PARACLÍNICOS REPORTADOS SIN ALTERACIONES SIGNIFICATIVAS.';
+            }
+            document.getElementById('cleaned-text').value = cleanedText.trim();
+            document.getElementById('results-container').style.display = 'block';
+        }
+
+        // Función para borrar los resultados
+        function borrarResultados() {
+            document.getElementById('input-text').value = '';
+            document.getElementById('cleaned-text').value = '';
+            document.getElementById('results-container').value = '';
+        }
+
+        // Función para copiar los resultados al portapapeles
+        function copiarResultados() {
+            var cleanedText = document.getElementById('cleaned-text');
+            cleanedText.select();
+            cleanedText.setSelectionRange(0, 99999); /* For mobile devices */
+            document.execCommand('copy');
+            alert('¡Los resultados han sido copiados al portapapeles!');
+        }
+    </script>
+</body>
+</html>
